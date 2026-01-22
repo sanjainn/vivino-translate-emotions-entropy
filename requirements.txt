@@ -1,0 +1,10 @@
+streamlit
+requests
+pandas
+openpyxl
+torch
+transformers
+scipy
+numpy
+sentencepiece
+langdetect
