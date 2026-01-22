@@ -8,3 +8,6 @@ scipy
 numpy
 sentencepiece
 langdetect
+selenium
+webdriver-manager
+altair

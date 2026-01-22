@@ -14,4 +14,9 @@ ai_cache/
 
 # Outputs
 *.xlsx
+*.csv
 outputs/
+
+# Selenium / browser noise
+selenium-debug.log
+chromedriver.log
