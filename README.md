@@ -43,3 +43,9 @@ conda create -n vivino-env python=3.10 -y
 conda activate vivino-env
 pip install -r requirements.txt
 streamlit run vivino_compare_vintages_selenium.py
+
+
+
+Updates on post processing where we did regression modeling can be found here: https://docs.google.com/spreadsheets/d/1nK1QuArZKqyEq6o9cJ16PjB-REmz7ZG8cIsq6M0l7Dw/edit?gid=1320390034#gid=1320390034
+
+
