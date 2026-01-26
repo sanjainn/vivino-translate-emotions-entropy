@@ -34,3 +34,12 @@ streamlit run app.py
 Browser should open → app should load.
 
 ✅ If this works, your repo is portable.
+
+Quick Clone test late strategy:
+
+git clone https://github.com/sanjainn/vivino-translate-emotions-entropy.git
+cd vivino-translate-emotions-entropy
+conda create -n vivino-env python=3.10 -y
+conda activate vivino-env
+pip install -r requirements.txt
+streamlit run vivino_compare_vintages_selenium.py
