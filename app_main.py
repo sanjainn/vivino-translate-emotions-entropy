@@ -959,7 +959,7 @@ if st.session_state["stage"] in ("fetched", "analyzed") and st.session_state["df
 
     else:
         st.subheader("Upload your translated file (CSV or Excel)")
-        st.caption("Required column name: translated_reviews. Recommended: review_id for matching.")
+        st.caption("Required column name: translated_reviews. Recommended: review_id for matching. Use the function =GOOGLETRANSLATE(A2, "auto", "en") in googlesheets")
 
         uploaded = st.file_uploader(
             "Upload translated file",
