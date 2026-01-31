@@ -43,6 +43,7 @@ from transformers import (
     M2M100Tokenizer,
 )
 from openpyxl.utils import get_column_letter
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
 # ---------- environment for stability ----------
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -196,17 +197,36 @@ def move_cols_to_front(df: pd.DataFrame, front: List[str]) -> pd.DataFrame:
 
 def df_to_excel_bytes(df: pd.DataFrame, sheet_name="data", float_cols: List[str] = None, num_fmt: str = NUM_FMT) -> bytes:
     buf = io.BytesIO()
+
+    # --- sanitize illegal Excel control characters in all text/object columns ---
+    df_clean = df.copy()
+    obj_cols = df_clean.select_dtypes(include=["object"]).columns
+
+    for c in obj_cols:
+        # Only sanitize actual strings; keep NaNs as NaN (so Excel cells stay blank)
+        s = df_clean[c]
+        mask = s.notna()
+        df_clean.loc[mask, c] = (
+            s.loc[mask]
+             .astype(str)
+             .map(lambda x: ILLEGAL_CHARACTERS_RE.sub("", x))
+        )
+
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name=sheet_name)
+        df_clean.to_excel(writer, index=False, sheet_name=sheet_name)
         ws = writer.sheets[sheet_name]
+
         if float_cols is None:
-            float_cols = [c for c in df.columns if pd.api.types.is_float_dtype(df[c])]
-        for idx, col in enumerate(df.columns, 1):
+            float_cols = [c for c in df_clean.columns if pd.api.types.is_float_dtype(df_clean[c])]
+
+        for idx, col in enumerate(df_clean.columns, 1):
             if col in float_cols:
                 for cell in ws[get_column_letter(idx)][1:]:
                     cell.number_format = num_fmt
+
     buf.seek(0)
     return buf.read()
+
 
 def get_json(url, params, attempts=6):
     delay = 5
