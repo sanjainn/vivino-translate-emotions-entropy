@@ -397,7 +397,23 @@ def load_emotion_method1():
 
 @st.cache_resource(show_spinner=False)
 def load_emotion_method2():
-    clf = hf_pipeline("text-classification", model=EMOTION_MODEL, return_all_scores=True, truncation=True)
+    # Newer transformers prefers top_k=None to return all class scores
+    try:
+        clf = hf_pipeline(
+            "text-classification",
+            model=EMOTION_MODEL,
+            top_k=None,
+            truncation=True,
+        )
+    except TypeError:
+        # Fallback for older transformers
+        clf = hf_pipeline(
+            "text-classification",
+            model=EMOTION_MODEL,
+            return_all_scores=True,
+            truncation=True,
+        )
+
     tmp = AutoModelForSequenceClassification.from_pretrained(EMOTION_MODEL)
     labels = [tmp.config.id2label[i] for i in range(tmp.config.num_labels)]
     return clf, labels
@@ -429,23 +445,57 @@ def emotions_method1(texts: List[str]) -> pd.DataFrame:
 def emotions_method2(texts: List[str]) -> pd.DataFrame:
     clf, _ = load_emotion_method2()
     tok, _, _ = load_emotion_method1()
+
     rows = []
     for t in texts:
         sents = _split_sentences(t)
         if not sents:
             rows.append([0.0] * len(EMOTION_COLS))
             continue
+
         kept, lens = _cap_by_token_budget(sents, tok, EMO_REVIEW_TOKEN_CAP, EMO_MAX_LENGTH)
         den = float(sum(lens))
         vec = np.zeros(len(EMOTION_COLS), dtype=np.float64)
+
         for i0 in range(0, len(kept), EMO_SENT_BATCH):
             chunk = kept[i0 : i0 + EMO_SENT_BATCH]
             outs = clf(chunk, padding=True, truncation=True, max_length=EMO_MAX_LENGTH, batch_size=16)
+
+            # ---- Normalize HF pipeline output to: List[List[Dict[label, score]]] ----
+            # Possible shapes from transformers pipeline:
+            # - Single text:  [{'label':..., 'score':...}, ...]   OR {'label':..., 'score':...}
+            # - Batch texts:  [[{...}, ...], [{...}, ...], ...]   OR [{'label':..., 'score':...}, ...] (top-1 per text)
+            if isinstance(outs, dict):
+                outs = [outs]
+
+            if outs and isinstance(outs[0], dict):
+                # Ambiguous case:
+                #   A) single text + all scores -> list-of-dicts (len == #labels)
+                #   B) batch texts + top-1 only -> list-of-dicts (len == batch)
+                #
+                # Disambiguate by checking whether dict labels cover >1 unique label.
+                labels_in_outs = [o.get("label") for o in outs if isinstance(o, dict)]
+                unique_labels = {lab for lab in labels_in_outs if lab is not None}
+
+                if len(chunk) == 1 and len(unique_labels) > 1:
+                    # Case A: one input, many labels -> wrap once
+                    outs = [outs]  # -> [ [ {...}, {...}, ... ] ]
+                else:
+                    # Case B: many inputs, one dict each -> wrap each dict
+                    outs = [[o] for o in outs]
+            # If already list-of-list-of-dicts, leave as-is.
+
             for j, out in enumerate(outs):
+                # out is now ALWAYS a list of dicts like [{'label':..., 'score':...}, ...]
                 m = {d["label"]: float(d["score"]) for d in out}
                 arr = np.array([m.get(lbl, 0.0) for lbl in EMOTION_COLS], dtype=np.float64)
-                vec += arr * float(lens[i0 + j])
+
+                # Safety: lens index might exceed if outs length doesn't match chunk length
+                if (i0 + j) < len(lens):
+                    vec += arr * float(lens[i0 + j])
+
         rows.append((vec / den).tolist() if den > 0 else vec.tolist())
+
     df = pd.DataFrame(rows, columns=EMOTION_COLS, dtype=np.float64)
     df.insert(0, "dominant_emotion", df[EMOTION_COLS].idxmax(axis=1))
     return df
